@@ -1,0 +1,20 @@
+model User {
+  id                  String     @id @default(uuid())
+  name                String
+  email               String     @unique
+  password            String
+  role                Role       @default(BUYER)
+  status              UserStatus @default(ACTIVE)
+  needsPasswordChange Boolean    @default(false)
+  isDeleted           Boolean    @default(false)
+  deletedAt           DateTime?
+  image               String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  agent               Agent?
+  buyer               Buyer?
+  seller              Seller?
+  admin               Admin?
+
+  @@map("users")
+}

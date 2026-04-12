@@ -1,0 +1,32 @@
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  AGENT
+  BUYER
+  SELLER
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  DELETED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum ViewingStatus {
+  PENDING
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  FAILED
+}

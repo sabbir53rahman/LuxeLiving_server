@@ -1,0 +1,19 @@
+model Viewing {
+  id            String        @id @default(uuid())
+  buyerId       String
+  buyer         Buyer         @relation(fields: [buyerId], references: [id])
+  propertyId    String
+  property      Property      @relation(fields: [propertyId], references: [id])
+  agentId       String?
+  agent         Agent?        @relation(fields: [agentId], references: [id])
+  status        ViewingStatus @default(SCHEDULED)
+  paymentStatus PaymentStatus @default(UNPAID)
+  viewingDate   DateTime
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  payment       Payment?
+  review        Review?
+
+  @@map("viewings")
+}

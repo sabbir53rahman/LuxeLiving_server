@@ -1,0 +1,19 @@
+model Payment {
+  id                 String        @id @default(uuid())
+  amount             Float
+  transactionId      String        @unique
+  stripeEventId      String?       @unique
+  paymentIntentId    String?       @unique
+  status             PaymentStatus @default(UNPAID)
+  invoiceUrl         String?
+  paymentGatewayData Json?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  viewingId String  @unique
+  viewing   Viewing @relation(fields: [viewingId], references: [id])
+
+  @@index([viewingId])
+  @@index([transactionId])
+  @@map("payments")
+}

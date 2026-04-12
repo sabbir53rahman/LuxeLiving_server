@@ -1,0 +1,25 @@
+model Property {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  price       Float
+  location    String
+  images      String[] // Array of image URLs
+  bedrooms    Int?
+  bathrooms   Int?
+  area        Float?   // in sq ft
+  type        String   // e.g., apartment, house, condo
+  status      String   @default("available") // available, sold, rented
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  sellerId    String?
+  seller      Seller?  @relation(fields: [sellerId], references: [id])
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  viewings Viewing[]
+  reviews  Review[]
+
+  @@map("properties")
+}

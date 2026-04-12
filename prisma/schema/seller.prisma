@@ -1,0 +1,21 @@
+model Seller {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id])
+  name                 String
+  email                String   @unique
+  profilePhoto         String?
+  contactNumber        String?
+  address              String?
+  propertyCount        Int      @default(0)
+  averagePropertyValue Float?
+  isProfessionalSeller Boolean  @default(false)
+  companyName          String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  properties           Property[]
+
+  @@map("sellers")
+}
