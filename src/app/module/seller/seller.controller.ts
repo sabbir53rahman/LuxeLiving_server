@@ -4,7 +4,10 @@ import { sendResponse } from "../../shared/sendResponse";
 import status from "http-status";
 import { SellerService } from "./seller.service";
 import pick from "../../utils/pick";
-import { propertyFilterableFields } from "./seller.constants";
+import {
+  propertyFilterableFields,
+  sellerFilterableFields,
+} from "./seller.constants";
 import { IQueryParams } from "../../interfaces/query.interface";
 import multer from "multer";
 
@@ -200,6 +203,20 @@ const getAssignedAgents = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getSellerEarnings = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user;
+  const filters = pick(req.query, sellerFilterableFields) as IQueryParams;
+
+  const result = await SellerService.getSellerEarnings(user.userId, filters);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: "Seller earnings retrieved successfully",
+    data: result,
+  });
+});
+
 const removeAgentFromProperty = catchAsync(async (req: Request, res: Response) => {
   const user = req.user;
   const { propertyId } = req.params as { propertyId: string };
@@ -234,6 +251,7 @@ export const SellerController = {
   // Sales Tracking
   getSellerStats,
   getSalesHistory,
+  getSellerEarnings,
 
   // Agent Collaboration
   requestAgent,

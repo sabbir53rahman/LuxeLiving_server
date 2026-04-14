@@ -24,6 +24,7 @@ router.patch("/viewings/:viewingId/status", checkAuth("SELLER"), SellerControlle
 // Sales Tracking
 router.get("/stats", checkAuth("SELLER"), SellerController.getSellerStats);
 router.get("/sales-history", checkAuth("SELLER"), SellerController.getSalesHistory);
+router.get("/earnings", checkAuth("SELLER"), SellerController.getSellerEarnings);
 
 // Agent Collaboration
 router.post("/agents/request", checkAuth("SELLER"), SellerController.requestAgent);

@@ -6,9 +6,9 @@ import { userSafeSelect } from "../user/user.constants";
 import { IUpdateAgentPayload } from "./agent.interface";
 import { IQueryParams } from "../../interfaces/query.interface";
 import { QueryBuilder } from "../../utils/QueryBuilder";
-import { Viewing } from "../../../generated/prisma/client";
+import { Viewing, Property } from "../../../generated/prisma/client";
 import { UserStatus } from "../../../generated/prisma/enums";
-import { Agent } from "../../../generated/prisma/client";
+import { Agent, Prisma } from "../../../generated/prisma/client";
 
 const getAllAgents = async (queryParams: IQueryParams) => {
   const { searchTerm } = queryParams;
@@ -268,6 +268,197 @@ const getAgentViewings = async (userId: string, queryParams: IQueryParams) => {
   return result;
 };
 
+const getAssignedSellerProperties = async (userId: string, queryParams: IQueryParams) => {
+  const agent = await prisma.agent.findUnique({
+    where: { userId },
+  });
+
+  if (!agent) {
+    throw new AppError(status.NOT_FOUND, "Agent not found");
+  }
+
+  const condition = { agentId: agent.id, isDeleted: false };
+
+  const queryBuilder = new QueryBuilder<Property>(prisma.property, queryParams, {
+    searchableFields: ["title", "description", "location"],
+  })
+    .filter()
+    .paginate()
+    .sort()
+    .where(condition)
+    .include({
+      seller: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          contactNumber: true,
+        },
+      },
+      viewings: {
+        where: { status: "COMPLETED" },
+        select: {
+          id: true,
+          viewingDate: true,
+          status: true,
+        },
+      },
+    });
+
+  const result = await queryBuilder.execute();
+  return result;
+};
+
+const getAgentEarnings = async (userId: string, queryParams: IQueryParams) => {
+  const agent = await prisma.agent.findUnique({
+    where: { userId },
+  });
+
+  if (!agent) {
+    throw new AppError(status.NOT_FOUND, "Agent not found");
+  }
+
+  const { startDate, endDate } = queryParams;
+
+  const dateFilter: Prisma.ViewingWhereInput = {};
+  if (startDate || endDate) {
+    dateFilter.createdAt = {};
+    if (startDate) dateFilter.createdAt.gte = new Date(startDate);
+    if (endDate) dateFilter.createdAt.lte = new Date(endDate);
+  }
+
+  // Get completed viewings with payments
+  const completedViewings = await prisma.viewing.findMany({
+    where: {
+      agentId: agent.id,
+      status: "COMPLETED",
+      payment: {
+        status: "PAID",
+      },
+      ...dateFilter,
+    },
+    include: {
+      property: {
+        select: {
+          id: true,
+          title: true,
+          price: true,
+        },
+      },
+      payment: {
+        select: {
+          id: true,
+          amount: true,
+          transactionId: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  // Calculate earnings
+  const totalEarnings = completedViewings.reduce((sum, viewing) => {
+    const commission = viewing.property.price * (agent.commissionRate / 100);
+    return sum + commission;
+  }, 0);
+
+  const totalSales = completedViewings.reduce((sum, viewing) => sum + viewing.property.price, 0);
+  const totalCommission = totalEarnings;
+  const totalViewings = completedViewings.length;
+
+  return {
+    totalEarnings,
+    totalSales,
+    totalCommission,
+    totalViewings,
+    averageCommission: totalViewings > 0 ? totalCommission / totalViewings : 0,
+    recentEarnings: completedViewings.slice(0, 10).map(v => ({
+      viewingId: v.id,
+      propertyTitle: v.property.title,
+      commission: v.property.price * (agent.commissionRate / 100),
+      date: v.createdAt,
+    })),
+  };
+};
+
+const getAgentAnalytics = async (userId: string, queryParams: IQueryParams) => {
+  const agent = await prisma.agent.findUnique({
+    where: { userId },
+  });
+
+  if (!agent) {
+    throw new AppError(status.NOT_FOUND, "Agent not found");
+  }
+
+  const { startDate, endDate } = queryParams;
+
+  const dateFilter: Prisma.ViewingWhereInput = {};
+  if (startDate || endDate) {
+    dateFilter.createdAt = {};
+    if (startDate) dateFilter.createdAt.gte = new Date(startDate);
+    if (endDate) dateFilter.createdAt.lte = new Date(endDate);
+  }
+
+  // Get all viewings for analytics
+  const allViewings = await prisma.viewing.findMany({
+    where: {
+      agentId: agent.id,
+      ...dateFilter,
+    },
+    include: {
+      property: {
+        select: {
+          id: true,
+          title: true,
+          price: true,
+          status: true,
+        },
+      },
+      payment: {
+        select: {
+          id: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  // Calculate analytics
+  const statusCounts = allViewings.reduce((acc, viewing) => {
+    acc[viewing.status] = (acc[viewing.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const monthlyData = allViewings.reduce((acc, viewing) => {
+    const month = viewing.createdAt.toISOString().slice(0, 7); // YYYY-MM
+    if (!acc[month]) {
+      acc[month] = { viewings: 0, earnings: 0 };
+    }
+    acc[month].viewings += 1;
+    if (viewing.status === "COMPLETED" && viewing?.payment?.status === "PAID") {
+      acc[month].earnings += viewing.property.price * (agent.commissionRate / 100);
+    }
+    return acc;
+  }, {} as Record<string, { viewings: number; earnings: number }>);
+
+  return {
+    totalViewings: allViewings.length,
+    statusBreakdown: statusCounts,
+    monthlyData,
+    completionRate: allViewings.length > 0 ? (statusCounts.COMPLETED || 0) / allViewings.length * 100 : 0,
+    topPerformingMonths: Object.entries(monthlyData)
+      .sort(([,a], [,b]) => b.earnings - a.earnings)
+      .slice(0, 6)
+      .map(([month, data]) => ({ month, ...data })),
+  };
+};
+
 const deleteAgent = async (id: string) => {
   const isAgentExist = await prisma.agent.findUnique({
     where: {
@@ -313,4 +504,7 @@ export const AgentService = {
   updateAgent,
   deleteAgent,
   getAgentViewings,
+  getAssignedSellerProperties,
+  getAgentEarnings,
+  getAgentAnalytics,
 };

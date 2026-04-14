@@ -684,6 +684,162 @@ const removeAgentFromProperty = async (
 };
 
 // Seller Profile
+const getSellerEarnings = async (userId: string, queryParams: IQueryParams) => {
+  const seller = await prisma.seller.findUnique({
+    where: { userId },
+  });
+
+  if (!seller) {
+    throw new AppError(status.NOT_FOUND, "Seller not found");
+  }
+
+  const { startDate, endDate } = queryParams;
+
+  const dateFilter: {
+    createdAt?: {
+      gte?: Date;
+      lte?: Date;
+    };
+  } = {};
+  if (startDate || endDate) {
+    dateFilter.createdAt = {};
+    if (startDate) dateFilter.createdAt.gte = new Date(startDate);
+    if (endDate) dateFilter.createdAt.lte = new Date(endDate);
+  }
+
+  // Get seller's properties with completed viewings
+  const properties = await prisma.property.findMany({
+    where: {
+      sellerId: seller.id,
+      isDeleted: false,
+      ...dateFilter,
+    },
+    include: {
+      viewings: {
+        where: {
+          status: "COMPLETED",
+          payment: {
+            status: "PAID",
+          },
+        },
+        include: {
+          payment: {
+            select: {
+              id: true,
+              amount: true,
+              createdAt: true,
+              status: true,
+            },
+          },
+          property: {
+            select: {
+              id: true,
+              title: true,
+              price: true,
+            },
+          },
+        },
+      },
+      agent: {
+        select: {
+          id: true,
+          name: true,
+          commissionRate: true,
+        },
+      },
+    },
+  });
+
+  // Calculate earnings
+  let totalSales = 0;
+  let totalCommissionPaid = 0;
+  let totalEarnings = 0;
+  let completedViewings = 0;
+
+  properties.forEach((property) => {
+    property.viewings.forEach((viewing) => {
+      if (
+        viewing.status === "COMPLETED" &&
+        viewing.payment?.status === "PAID"
+      ) {
+        const propertyPrice = property.price;
+        const agentCommission = property.agent
+          ? propertyPrice * (property.agent.commissionRate / 100)
+          : 0;
+
+        totalSales += propertyPrice;
+        totalCommissionPaid += agentCommission;
+        totalEarnings += propertyPrice - agentCommission; // Seller gets property price minus agent commission
+        completedViewings += 1;
+      }
+    });
+  });
+
+  // Calculate monthly breakdown
+  const monthlyData = properties.reduce(
+    (acc, property) => {
+      property.viewings.forEach((viewing) => {
+        if (
+          viewing.status === "COMPLETED" &&
+          viewing.payment?.status === "PAID"
+        ) {
+          const month = viewing.createdAt.toISOString().slice(0, 7); // YYYY-MM
+          if (!acc[month]) {
+            acc[month] = { sales: 0, earnings: 0, properties: 0 };
+          }
+          const propertyPrice = property.price;
+          const agentCommission = property.agent
+            ? propertyPrice * (property.agent.commissionRate / 100)
+            : 0;
+          const sellerEarning = propertyPrice - agentCommission;
+
+          acc[month].sales += propertyPrice;
+          acc[month].earnings += sellerEarning;
+          acc[month].properties += 1;
+        }
+      });
+      return acc;
+    },
+    {} as Record<
+      string,
+      { sales: number; earnings: number; properties: number }
+    >,
+  );
+
+  return {
+    totalSales,
+    totalCommissionPaid,
+    totalEarnings,
+    completedViewings,
+    averageSalePrice:
+      completedViewings > 0 ? totalSales / completedViewings : 0,
+    monthlyData,
+    topPerformingMonths: Object.entries(monthlyData)
+      .sort(([, a], [, b]) => b.earnings - a.earnings)
+      .slice(0, 6)
+      .map(([month, data]) => ({ month, ...data })),
+    recentSales: properties.flatMap((property) =>
+      property.viewings
+        .filter((v) => v.status === "COMPLETED" && v.payment?.status === "PAID")
+        .map((v) => ({
+          propertyId: property.id,
+          propertyTitle: property.title,
+          salePrice: property.price,
+          agentCommission: property.agent
+            ? property.price * (property.agent.commissionRate / 100)
+            : 0,
+          sellerEarning:
+            property.price -
+            (property.agent
+              ? property.price * (property.agent.commissionRate / 100)
+              : 0),
+          date: v.createdAt,
+        }))
+        .slice(0, 10),
+    ),
+  };
+};
+
 const getMySellerProfile = async (user: IRequestUser) => {
   const seller = await prisma.seller.findUnique({
     where: {
@@ -697,21 +853,13 @@ const getMySellerProfile = async (user: IRequestUser) => {
           name: true,
           email: true,
           role: true,
-          image: true,
-        },
-      },
-      properties: {
-        where: { isDeleted: false },
-        select: {
-          id: true,
-          title: true,
-          price: true,
           status: true,
-          location: true,
-          images: true,
+          needsPasswordChange: true,
+          isDeleted: true,
+          image: true,
+          createdAt: true,
+          updatedAt: true,
         },
-        take: 5,
-        orderBy: { createdAt: "desc" },
       },
     },
   });
@@ -799,6 +947,7 @@ export const SellerService = {
 
   // Inquiry Management
   getPropertyInquiries,
+  getSellerEarnings,
 
   // Viewing Management
   getPropertyViewings,

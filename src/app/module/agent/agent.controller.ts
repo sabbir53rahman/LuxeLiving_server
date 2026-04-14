@@ -73,6 +73,49 @@ const getAgentViewings = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getAssignedSellerProperties = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user;
+  const filters = pick(req.query, agentFilterableFields) as IQueryParams;
+
+  const result = await AgentService.getAssignedSellerProperties(user.userId, filters);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: "Agent assigned properties retrieved successfully",
+    meta: result.meta,
+    data: result.data,
+  });
+});
+
+const getAgentEarnings = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user;
+  const filters = pick(req.query, agentFilterableFields) as IQueryParams;
+
+  const result = await AgentService.getAgentEarnings(user.userId, filters);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: "Agent earnings retrieved successfully",
+    data: result,
+  });
+});
+
+const getAgentAnalytics = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user;
+  const filters = pick(req.query, agentFilterableFields) as IQueryParams;
+
+  const result = await AgentService.getAgentAnalytics(user.userId, filters);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: "Agent analytics retrieved successfully",
+    data: result,
+  });
+});
+
 const deleteAgent = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const result = await AgentService.deleteAgent(id);
@@ -92,4 +135,7 @@ export const AgentController = {
   updateAgent,
   deleteAgent,
   getAgentViewings,
+  getAssignedSellerProperties,
+  getAgentEarnings,
+  getAgentAnalytics,
 };
