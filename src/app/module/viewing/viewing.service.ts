@@ -16,6 +16,51 @@ const createViewing = async (
   user: IRequestUser,
   payload: ICreateViewingPayload,
 ) => {
+  // Validate required fields
+  if (!payload.propertyId) {
+    throw new AppError(status.BAD_REQUEST, "Property ID is required");
+  }
+
+  // Handle both combined viewingDate or separate date and time fields
+  let viewingDate: Date;
+  
+  // Debug: Log the payload to see what's being sent
+  console.log("Viewing payload:", payload);
+  
+  if (payload.viewingDate) {
+    // Combined datetime field
+    viewingDate = new Date(payload.viewingDate);
+  } else if (payload.date && payload.time) {
+    // Separate date and time fields (from frontend form)
+    viewingDate = new Date(`${payload.date} ${payload.time}`);
+  } else if (payload.preferredDate && payload.preferredTime) {
+    // Alternative field names from frontend form
+    // Handle both ISO date strings and regular date strings
+    const dateStr = payload.preferredDate.includes('T') 
+      ? payload.preferredDate.split('T')[0] // Extract date part from ISO string
+      : payload.preferredDate;
+    viewingDate = new Date(`${dateStr} ${payload.preferredTime}`);
+  } else if (payload.date && payload.preferredTime) {
+    // Mixed field names
+    const dateStr = payload.date.includes('T') 
+      ? payload.date.split('T')[0] 
+      : payload.date;
+    viewingDate = new Date(`${dateStr} ${payload.preferredTime}`);
+  } else if (payload.preferredDate && payload.time) {
+    // Mixed field names
+    const dateStr = payload.preferredDate.includes('T') 
+      ? payload.preferredDate.split('T')[0] 
+      : payload.preferredDate;
+    viewingDate = new Date(`${dateStr} ${payload.time}`);
+  } else {
+    // Provide more detailed error message
+    const availableFields = Object.keys(payload);
+    throw new AppError(
+      status.BAD_REQUEST, 
+      `Viewing date and time are required. Available fields: ${availableFields.join(', ')}`
+    );
+  }
+
   const buyer = await prisma.buyer.findUnique({
     where: {
       userId: user.userId,
@@ -37,8 +82,6 @@ const createViewing = async (
     throw new AppError(status.NOT_FOUND, "Property not found");
   }
 
-  const viewingDate = new Date(payload.viewingDate);
-
   // Validate viewingDate is a valid date
   if (isNaN(viewingDate.getTime())) {
     throw new AppError(
@@ -47,11 +90,19 @@ const createViewing = async (
     );
   }
 
-  // Only validate agent if agentId is provided
-  if (payload.agentId) {
+  // Determine agent assignment
+  let assignedAgentId = payload.agentId;
+
+  // If no agentId provided but property is assigned to an agent, auto-assign
+  if (!assignedAgentId && property.agentId) {
+    assignedAgentId = property.agentId;
+  }
+
+  // Validate agent if agentId is determined
+  if (assignedAgentId) {
     const agent = await prisma.agent.findFirst({
       where: {
-        id: payload.agentId,
+        id: assignedAgentId,
         isDeleted: false,
       },
     });
@@ -70,7 +121,7 @@ const createViewing = async (
     // Check for conflicting viewings for the agent at the same time
     const conflictingViewing = await prisma.viewing.findFirst({
       where: {
-        agentId: payload.agentId,
+        agentId: assignedAgentId,
         viewingDate: viewingDate,
         status: { not: "CANCELLED" },
       },
@@ -99,7 +150,7 @@ const createViewing = async (
     data: {
       buyerId: buyer.id,
       propertyId: payload.propertyId,
-      agentId: payload.agentId,
+      agentId: assignedAgentId,
       viewingDate: viewingDate,
       notes: payload.notes,
     },
